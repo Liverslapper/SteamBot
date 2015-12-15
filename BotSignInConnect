@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using SteamKit2;
 using System.IO;
 using System.Threading;
+using System.Security.Cryptography;
 
 namespace SteamBot
 {
@@ -55,13 +56,13 @@ namespace SteamBot
             // register a few callbacks we're interested in
             // these are registered upon creation to a callback manager, which will then route the callbacks
             // to the functions specified
-            new Callback<SteamClient.ConnectedCallback>(OnConnected, manager);
+            manager.Subscribe<SteamClient.ConnectedCallback>(OnConnected);
 
-            new Callback<SteamUser.LoggedOnCallback>(OnLoggedOn, manager);
+            manager.Subscribe<SteamUser.LoggedOnCallback>(OnLoggedOn);
 
-            new Callback<SteamClient.DisconnectedCallback>(OnDisconnect, manager);
+            manager.Subscribe<SteamClient.DisconnectedCallback>(OnDisconnected);
 
-            new Callback<SteamUser.UpdateMachineAuthCallback>(UpdateMachineAuthCallback, manager);
+            manager.Subscribe<SteamUser.UpdateMachineAuthCallback>(OnMachineAuth);
 
             isRunning = true;
 
@@ -71,7 +72,7 @@ namespace SteamBot
             steamClient.Connect();
 
             // create our callback handling loop
-            while(isRunning)
+            while (isRunning)
             {
                 // in order for the callbacks to get routed, they need to be handled by the manager
                 manager.RunWaitCallbacks(TimeSpan.FromSeconds(1));
@@ -80,18 +81,18 @@ namespace SteamBot
         }
         static void OnConnected(SteamClient.ConnectedCallback callback)
         {
-            if(callback.Result != EResult.OK)
+            if (callback.Result != EResult.OK)
             {
                 Console.WriteLine("Unable to connect to Steam: {0}", callback.Result);
-                
+
                 return;
             }
 
-            Console.WriteLine("Connected to Steam. \nLogging in as {0}...\n",user);
+            Console.WriteLine("Connected to Steam. \nLogging in as {0}...\n", user);
 
             byte[] sentryHash = null;
 
-            if(File.Exists("sentry.bin"))
+            if (File.Exists("sentry.bin"))
             {
                 byte[] sentryFile = File.ReadAllBytes("sentry.bin");
 
@@ -117,24 +118,22 @@ namespace SteamBot
             {
                 Console.WriteLine("This account is SteamGuard protected");
 
-                Console.WriteLine("Please enter the authentication code sent to the email at {0}", callback.EmailDomain);
+                Console.Write("Please enter the authentication code sent to the email at {0}", callback.EmailDomain);
 
                 authCode = Console.ReadLine();
 
                 return;
             }
-            if(callback.Result != EResult.OK)
+            if (callback.Result != EResult.OK)
             {
                 Console.WriteLine("Unable to log into Steam: {0}\n", callback.Result);
                 isRunning = false;
                 return;
             }
-            Console.WriteLine("{0} successfully logged in!", user);
-            Console.ReadKey();
-            Environment.Exit(0);
+            Console.WriteLine("{0} Successfully logged in!", user);
         }
 
-        static void UpdateMachineAuthCallback(SteamUser.UpdateMachineAuthCallback callback, JobID jobID)
+        static void OnMachineAuth(SteamUser.UpdateMachineAuthCallback callback)
         {
             Console.WriteLine("Updating sentry file...");
 
@@ -144,7 +143,7 @@ namespace SteamBot
 
             steamUser.SendMachineAuthResponse(new SteamUser.MachineAuthDetails
             {
-                JobID = jobID,
+                JobID = callback.JobID,
                 FileName = callback.FileName,
                 BytesWritten = callback.BytesToWrite,
                 FileSize = callback.Data.Length,
